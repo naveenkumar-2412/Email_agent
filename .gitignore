@@ -18,6 +18,9 @@ ENV/
 .env
 .env.*
 !.env.example
+backend/credentials.json
+backend/*key*.json
+backend/token.json
 
 # Next.js and frontend dependencies
 node_modules/

@@ -1,69 +1,232 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useRef, useEffect } from 'react';
+import Inbox from '@/components/Inbox';
+import Compose from '@/components/Compose';
+import EmailDetail from '@/components/EmailDetail';
+
+export default function MailApp() {
+  // ==========================================
+  // 1. DATA STATES (Controlled by the AI)
+  // ==========================================
+  const [uiView, setUiView] = useState<'inbox' | 'compose' | 'email_detail'>('inbox');
+  const [inboxEmails, setInboxEmails] = useState<any[]>([]);
+  const [openEmailId, setOpenEmailId] = useState<string | null>(null);
+  const [composeDraft, setComposeDraft] = useState({ to: '', subject: '', body: '' });
+
+  // ==========================================
+  // 2. CHAT STATES
+  // ==========================================
+  const [messages, setMessages] = useState<{role: string, content: string}[]>([
+    { role: 'assistant', content: 'Hi! I can help you write emails, search your inbox, or navigate. What do you need?' }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // ==========================================
+  // 3. AUTO-LOAD INBOX ON STARTUP (With Retry Safety)
+  // ==========================================
+  useEffect(() => {
+    const loadInitialInbox = async () => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      try {
+        const res = await fetch('http://localhost:8000/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: "Show my latest emails" }],
+            ui_view: 'inbox',
+            inbox_emails: []
+          })
+        });
+        
+        const data = await res.json();
+        if (data.inbox_emails && data.inbox_emails.length > 0) {
+          setInboxEmails(data.inbox_emails);
+        }
+      } catch (err) {
+        console.warn("Backend still waking up, retrying inbox load in 2s...", err);
+        setTimeout(async () => {
+          try {
+            const retryRes = await fetch('http://localhost:8000/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                messages: [{ role: "user", content: "Show my latest emails" }],
+                ui_view: 'inbox',
+                inbox_emails: []
+              })
+            });
+            const retryData = await retryRes.json();
+            if (retryData.inbox_emails) setInboxEmails(retryData.inbox_emails);
+          } catch (retryErr) {
+            console.error("Failed to load initial inbox after retry:", retryErr);
+          }
+        }, 2000);
+      }
+    };
+
+    loadInitialInbox();
+  }, []);
+
+  // ==========================================
+  // 4. REAL-TIME PUBSUB LISTENER 
+  // ==========================================
+  useEffect(() => {
+    const eventSource = new EventSource('http://localhost:8000/api/stream');
+    
+    eventSource.addEventListener('new_email', async () => {
+      console.log("Real-time update triggered! Fetching latest emails...");
+      
+      try {
+        const res = await fetch('http://localhost:8000/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: "Fetch my latest emails silently." }],
+            ui_view: 'inbox',
+            open_email_id: openEmailId,
+            inbox_emails: inboxEmails
+          })
+        });
+        
+        const data = await res.json();
+        if (data.inbox_emails && data.inbox_emails.length > 0) {
+          setInboxEmails(data.inbox_emails);
+        }
+      } catch (err) {
+        console.error("Failed to auto-refresh inbox", err);
+      }
+    });
+
+    return () => eventSource.close();
+  }, [inboxEmails, openEmailId]); 
+
+  // ==========================================
+  // 5. API BRIDGE TO FASTAPI
+  // ==========================================
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const userMsg = { role: 'user', content: chatInput };
+    const newMessages = [...messages, userMsg];
+    
+    setMessages(newMessages);
+    setChatInput('');
+    setIsTyping(true);
+
+    try {
+      const res = await fetch('http://localhost:8000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          ui_view: uiView,
+          open_email_id: openEmailId,
+          inbox_emails: inboxEmails
+        })
+      });
+
+      const data = await res.json();
+      
+      if (data.ui_view) setUiView(data.ui_view);
+      if (data.inbox_emails && data.inbox_emails.length > 0) setInboxEmails(data.inbox_emails);
+      if (data.compose_draft) setComposeDraft(data.compose_draft);
+      if (data.open_email_id) setOpenEmailId(data.open_email_id);
+      
+      if (data.messages) {
+        setMessages(data.messages.filter((m: any) => m.role !== 'system'));
+      }
+
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Could not connect to the LangGraph backend.' }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+    <div className="flex h-screen bg-gray-100 overflow-hidden text-gray-900">
+      
+      {/* MAIN CONTENT AREA (Left Side) */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm z-10">
+          <h1 className="text-2xl font-black tracking-tight text-blue-600">Nebula<span className="text-gray-800">Mail</span></h1>
+          <nav className="space-x-6 font-medium">
+            <button onClick={() => setUiView('inbox')} className={`hover:text-blue-600 transition-colors ${uiView === 'inbox' ? 'text-blue-600' : 'text-gray-500'}`}>Inbox</button>
+            <button onClick={() => setUiView('compose')} className={`hover:text-blue-600 transition-colors ${uiView === 'compose' ? 'text-blue-600' : 'text-gray-500'}`}>Compose</button>
+          </nav>
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-8 w-full max-w-5xl mx-auto">
+          {uiView === 'inbox' && <Inbox emails={inboxEmails} onOpen={(id) => { setOpenEmailId(id); setUiView('email_detail'); }} />}
+          {uiView === 'compose' && <Compose draft={composeDraft} setDraft={setComposeDraft} />}
+          {uiView === 'email_detail' && (
+            <EmailDetail 
+              email={inboxEmails.find((email) => email.id === openEmailId) ?? null} 
+              onBack={() => setUiView('inbox')} 
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
+        </main>
+      </div>
+
+      {/* AI ASSISTANT SIDEBAR (Right Side) */}
+      <div className="w-96 bg-white border-l flex flex-col shadow-2xl z-20">
+        <div className="p-4 bg-gray-900 text-white font-semibold flex items-center justify-between">
+          <span>AI Co-Pilot</span>
+          <span className="text-xs bg-blue-600 px-2 py-1 rounded-full">Online</span>
         </div>
-      </main>
+        
+        {/* Chat History */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          {messages.map((msg, idx) => (
+            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border text-gray-800 rounded-bl-none shadow-sm'}`}>
+                {msg.content}
+              </div>
+            </div>
+          ))}
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="bg-gray-200 text-gray-500 rounded-2xl rounded-bl-none px-4 py-2 text-sm animate-pulse">
+                Thinking...
+              </div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Input Box */}
+        <form onSubmit={sendMessage} className="p-4 bg-white border-t">
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Tell the AI what to do..."
+              className="flex-1 border bg-gray-50 text-gray-900 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isTyping}
+            />
+            <button 
+              type="submit" 
+              disabled={isTyping}
+              className="bg-blue-600 text-white rounded-full p-2 w-9 h-9 flex items-center justify-center hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              ↑
+            </button>
+          </div>
+        </form>
+      </div>
+
     </div>
   );
 }

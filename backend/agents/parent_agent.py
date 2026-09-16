@@ -41,11 +41,11 @@ def route_intent(state: AppState) -> dict:
     
     Routes:
     - 'compose': The user wants to write, draft, or send an email.
-    - 'search_filter': The user wants to find, see, or filter their inbox/sent emails.
-    - 'navigate': The user wants to open a specific email or switch views.
-    - 'general_chat': The user is just saying hello or asking a non-mail question.
+    - 'search_filter': The user wants to list, find, see, or filter their inbox/sent emails (e.g. "show emails", "filter unread").
+    - 'navigate': The user wants to OPEN or READ a specific email, or switch views (e.g. "open the email", "read the project update email", "open the latest email").
+    - 'general_chat': Friendly greetings or questions unrelated to mail actions.
     
-    Choose the best route based on the context.
+    CRITICAL: Any request to "open", "read", or "show details of" a specific email MUST route to 'navigate'.
     """)
     
     # Invoke the model to get the structured decision
