@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / C-extensions
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+
+# Next.js and frontend dependencies
+node_modules/
+.next/
+out/
+
+# CopilotKit / Local dev stores
+.copilotkit/
+
+# IDE / Editor configuration
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
