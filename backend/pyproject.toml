@@ -1,7 +1,7 @@
 [project]
 name = "email-agent"
 version = "0.1.0"
-description = "AI-Powered Mail Web Application Backend"
+description = "AI-powered email agent backend orchestrating UI actions via LangGraph and FastAPI"
 authors = [
     { name = "naveenkumar-2412", email = "naveenkumar637930@gmail.com" }
 ]
