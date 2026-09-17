@@ -104,14 +104,14 @@ def fetch_recent_emails(days_back: int = 7, unread_only: bool = False, keyword: 
     print(f"Executing Generic Gmail Search: {query}")
     
     try:
-        results = service.users().messages().list(userId='me', q=query, maxResults=10).execute()
+        results = service.users().messages().list(userId='me', q=query, maxResults=15).execute()
         messages = results.get('messages', [])
         
         parsed_emails = []
         for msg in messages:
-            # We must fetch 'full' here so the UI has the HTML ready when you click it
             msg_data = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
             headers = msg_data.get('payload', {}).get('headers', [])
+            label_ids = msg_data.get('labelIds', [])
             subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), "No Subject")
             sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), "Unknown Sender")
             date = next((h['value'] for h in headers if h['name'].lower() == 'date'), "")
@@ -121,9 +121,10 @@ def fetch_recent_emails(days_back: int = 7, unread_only: bool = False, keyword: 
                 "sender": sender,
                 "subject": subject,
                 "preview": msg_data.get('snippet', ''),
-                "body": extract_full_html_body(msg_data), # <--- NOW IT SENDS FULL HTML
+                "body": extract_full_html_body(msg_data),
                 "date": date,
-                "is_read": not unread_only 
+                "is_read": "UNREAD" not in label_ids,
+                "category": "Inbox"
             })
         return parsed_emails
     except Exception as e:
@@ -144,10 +145,11 @@ def search_gmail_messages(query: Optional[str] = None, max_results: int = 15) ->
         
         for msg in messages:
             msg_data = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
-            headers = msg_data['payload']['headers']
-            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
-            sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
-            date = next((h['value'] for h in headers if h['name'] == 'Date'), '')
+            headers = msg_data.get('payload', {}).get('headers', [])
+            label_ids = msg_data.get('labelIds', [])
+            subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+            sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), 'Unknown Sender')
+            date = next((h['value'] for h in headers if h['name'].lower() == 'date'), '')
             
             detailed_emails.append({
                 "id": msg['id'],
@@ -155,7 +157,9 @@ def search_gmail_messages(query: Optional[str] = None, max_results: int = 15) ->
                 "sender": sender,
                 "date": date,
                 "preview": msg_data.get('snippet', ''),
-                "body": extract_full_html_body(msg_data) # <--- NOW IT SENDS FULL HTML
+                "body": extract_full_html_body(msg_data),
+                "is_read": "UNREAD" not in label_ids,
+                "category": "Search Result"
             })
             
         return detailed_emails

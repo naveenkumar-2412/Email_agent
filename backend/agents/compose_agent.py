@@ -34,8 +34,9 @@ def handle_compose(state: AppState) -> dict:
     the subject line (subject), and the message body (body).
     
     If a field is not explicitly mentioned, leave it null.
-    If the user explicitly says "send it now" or implies final confirmation, set action to "send".
-    Otherwise, default to "draft".
+    CRITICAL RULE: NEVER set the action to "send" unless the user explicitly and unambiguously asks you to send it (e.g., "send it now", "send the email"). 
+    If the user says "mail someone", "draft an email", or "compose an email", ALWAYS set action to "draft". 
+    When in doubt, ALWAYS default to "draft" so the user can safely review it in the UI.
     """)
     
     # Run the fast extraction

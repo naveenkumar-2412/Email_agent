@@ -3,10 +3,9 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, AIMessage
 from backend.models.schema import AppState, FilterExtraction
 from backend.utils.llm_pick import pick_llm
-# Import both tools so we can choose between them
 from backend.utils.mail_api_tools import fetch_recent_emails, search_gmail_messages, send_email, get_email_thread
 
 # Initialize the medium-level LLM for structured filter extraction
@@ -75,8 +74,37 @@ def handle_search_filter(state: AppState) -> dict:
             "keyword": None
         })
     
+    # Build a rich assistant response message describing the search output
+    count = len(fetched_emails)
+    query_name = extraction.keyword.strip() if (extraction.keyword and extraction.keyword.strip()) else ""
+    
+    if query_name:
+        msg_header = f"🔍 **Found {count} email{'s' if count != 1 else ''} matching '{query_name}'**:"
+    elif extraction.is_unread:
+        msg_header = f"📩 **Found {count} unread email{'s' if count != 1 else ''}**:"
+    else:
+        msg_header = f"📥 **Fetched {count} email{'s' if count != 1 else ''}**:"
+
+    if count == 0:
+        summary_text = f"I searched your mailbox for '{query_name or 'unread emails'}' but didn't find any matching messages."
+    else:
+        top_items = []
+        for i, email in enumerate(fetched_emails[:4], 1):
+            s_raw = email.get('sender', 'Unknown')
+            sender_clean = s_raw.split('<')[0].strip(' "\'')
+            subj = email.get('subject', 'No Subject')
+            top_items.append(f"{i}. **{sender_clean}**: {subj}")
+        
+        summary_text = f"{msg_header}\n\n" + "\n".join(top_items)
+        if count > 4:
+            summary_text += f"\n\n*...and {count - 4} more emails displayed in your Inbox view.*"
+
+    # Append response to messages list
+    updated_messages = list(messages) + [AIMessage(content=summary_text)]
+
     # Return the updated state to drive the frontend UI
     return {
-        "ui_view": "inbox",            # Force the UI to switch to the inbox view
-        "inbox_emails": fetched_emails  # Populate the UI with the searched data
+        "ui_view": "inbox",
+        "inbox_emails": fetched_emails,
+        "messages": updated_messages
     }

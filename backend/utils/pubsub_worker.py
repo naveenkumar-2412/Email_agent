@@ -18,7 +18,7 @@ def start_gmail_watch():
         topic_name = os.environ.get("PUBSUB_TOPIC")
         
         if not project_id or not topic_name:
-            print("⚠️ Missing GCP_PROJECT_ID or PUBSUB_TOPIC in environment.")
+            print("[WARNING] Missing GCP_PROJECT_ID or PUBSUB_TOPIC in environment.")
             return
             
         request = {
@@ -26,9 +26,9 @@ def start_gmail_watch():
             "topicName": f"projects/{project_id}/topics/{topic_name}"
         }
         service.users().watch(userId="me", body=request).execute()
-        print("✅ Gmail Watch successfully activated.")
+        print("[OK] Gmail Watch successfully activated.")
     except Exception as e:
-        print(f"⚠️ Could not start Gmail watch: {e}")
+        print(f"[WARNING] Could not start Gmail watch: {e}")
 
 def listen_for_emails():
     """Background subscriber thread pulling incoming push notifications from Pub/Sub."""
@@ -36,19 +36,19 @@ def listen_for_emails():
     subscription_id = os.environ.get("PUBSUB_SUBSCRIPTION")
     
     if not project_id or not subscription_id:
-        print("⚠️ Missing GCP_PROJECT_ID or PUBSUB_SUBSCRIPTION in environment.")
+        print("[WARNING] Missing GCP_PROJECT_ID or PUBSUB_SUBSCRIPTION in environment.")
         return
 
     subscriber = pubsub_v1.SubscriberClient()
     subscription_path = subscriber.subscription_path(project_id, subscription_id)
 
     def callback(message):
-        print("📬 Pub/Sub Notification Received! New inbox activity detected.")
+        print("[PUBSUB] Notification Received! New inbox activity detected.")
         message.ack()
         # Safely update the shared timestamp so all React clients get notified
         sync_state["last_update"] = time.time()
 
-    print(f"🎧 Listening for real-time emails on {subscription_id}...")
+    print(f"[LISTEN] Listening for real-time emails on {subscription_id}...")
     future = subscriber.subscribe(subscription_path, callback=callback)
     try:
         future.result()

@@ -1,6 +1,18 @@
 import sys
 import os
 
+# Safely configure UTF-8 output encoding for Windows shells
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # Append the project root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -19,6 +31,20 @@ from backend.utils.pubsub_worker import start_gmail_watch, listen_for_emails, sy
 
 # Load the .env file
 load_dotenv()
+
+# Automatically resolve GOOGLE_APPLICATION_CREDENTIALS path safely
+gcp_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+if gcp_creds and not os.path.exists(gcp_creds):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, os.path.basename(gcp_creds)),
+        os.path.join(base_dir, gcp_creds),
+        os.path.abspath(gcp_creds)
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = candidate
+            break
 
 # Import LangChain message types
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -111,7 +137,7 @@ async def email_event_stream():
         while True:
             if sync_state["last_update"] > local_update:
                 local_update = sync_state["last_update"]
-                print("📡 DEBUG: Broadcasting SSE refresh signal to React!")
+                print("[SSE] Broadcasting SSE refresh signal to React!")
                 yield {"event": "new_email", "data": "refresh_inbox"}
                 
             await asyncio.sleep(1)
